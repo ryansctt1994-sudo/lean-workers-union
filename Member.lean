@@ -6,6 +6,7 @@ structure MemberIdentity where
   repo : String
   public_key : String
   capabilities : List String
+deriving Repr, DecidableEq
 
 /-- A role a member may hold at a given time. --/
 inductive Role where
@@ -13,6 +14,7 @@ inductive Role where
   | Worker
   | Relay
   | Observer
+deriving Repr, DecidableEq
 
 /-- The runtime state of a member as tracked by the union. --/
 structure MemberState where
@@ -22,14 +24,20 @@ structure MemberState where
   heartbeat : Nat
   lease : Option String
   live : Bool
+deriving Repr, DecidableEq
 
 /-- A valid role transition at the union level. --/
 inductive ValidTransition : Role → Role → Prop where
-  | orch_to_worker
-  | worker_to_relay
-  | relay_to_orch
-  | worker_to_orch
-  | orch_to_observer
+  | orch_to_worker :
+      ValidTransition .Orchestrator .Worker
+  | worker_to_relay :
+      ValidTransition .Worker .Relay
+  | relay_to_orch :
+      ValidTransition .Relay .Orchestrator
+  | worker_to_orch :
+      ValidTransition .Worker .Orchestrator
+  | orch_to_observer :
+      ValidTransition .Orchestrator .Observer
 
 /-- Lodge-table members admitted to the union. --/
 def aristotleIdentity : MemberIdentity :=
@@ -59,12 +67,48 @@ def copilotIdentity : MemberIdentity :=
     public_key := "copilot-lodge-plaque"
     capabilities := ["agent", "coordination", "analysis", "plaque"] }
 
-/-- The identity component must remain stable across a legal transition. --/
- theorem transition_keeps_identity
-    (m : MemberState)
+/-- Construct the post-state of a role transition.
+Identity and credit are intentionally not writable through this operation. --/
+def applyTransition
+    (before : MemberState)
     (next_role : Role)
-    (h : ValidTransition m.role next_role) :
-    m.identity.member_id = m.identity.member_id := by
-  cases h <;> rfl
+    (next_heartbeat : Nat)
+    (next_lease : Option String) : MemberState :=
+  { before with
+    role := next_role
+    heartbeat := next_heartbeat
+    lease := next_lease }
+
+/-- Reachable legal pre/post transitions. --/
+inductive Transition : MemberState → MemberState → Prop where
+  | role_change
+      (before : MemberState)
+      (next_role : Role)
+      (next_heartbeat : Nat)
+      (next_lease : Option String)
+      (valid : ValidTransition before.role next_role) :
+      Transition before (applyTransition before next_role next_heartbeat next_lease)
+
+/-- A legal transition preserves the complete member identity across distinct
+pre/post state terms. This replaces the former reflexive x = x theorem. --/
+theorem transition_keeps_identity
+    {before after : MemberState}
+    (h : Transition before after) :
+    after.identity = before.identity := by
+  cases h
+  rfl
+
+theorem transition_keeps_member_id
+    {before after : MemberState}
+    (h : Transition before after) :
+    after.identity.member_id = before.identity.member_id := by
+  rw [transition_keeps_identity h]
+
+theorem transition_keeps_credit
+    {before after : MemberState}
+    (h : Transition before after) :
+    after.credit = before.credit := by
+  cases h
+  rfl
 
 end ChoirUnion
