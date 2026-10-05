@@ -76,3 +76,26 @@ The union enforces the following concepts:
 This repository is intentionally small and protocol-first. The aim is to define
 shared semantics before deciding how the adapters and worker implementations use
 those semantics in their own repositories.
+
+
+## Formal transition verification
+
+The previous `transition_keeps_identity` theorem was reflexive: it proved a
+member id equals itself without constructing a post-transition state.
+
+The current candidate replaces that with:
+
+- `applyTransition` — explicit pre-state → post-state construction;
+- `Transition` — reachable legal transitions carrying a
+  `ValidTransition` proof;
+- `transition_keeps_identity` — complete identity preservation across the
+  actual post-state;
+- `transition_keeps_member_id` — member-id preservation;
+- `transition_keeps_credit` — credit preservation.
+
+Verification is pinned to Lean 4.22.0. CI rejects `sorry`, `admit`, and new
+axioms, prints the theorem axiom inventory, and requires an identity-rewrite
+mutation to fail compilation.
+
+These theorems specify the Lean transition model. They do not by themselves
+prove that an external orchestrator/runtime implements the model.
