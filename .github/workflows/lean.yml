@@ -1,0 +1,59 @@
+name: Lean transition verification
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lean:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Acquire pinned Lean 4.22.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 -o "$RUNNER_TEMP/lean.tar.zst"             https://github.com/leanprover/lean4/releases/download/v4.22.0/lean-4.22.0-linux.tar.zst
+          echo "85097a4d659fe388193a5efb0c413b880e101f1290cc41d00eb60847b18f064e  $RUNNER_TEMP/lean.tar.zst" | sha256sum -c -
+          tar --no-same-owner --zstd -xf "$RUNNER_TEMP/lean.tar.zst" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/lean-4.22.0-linux/bin" >> "$GITHUB_PATH"
+
+      - name: Guard proof sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          text = Path("Member.lean").read_text()
+          if re.search(r"^\s*(sorry|admit|axiom)(?:\s|$)", text, re.M):
+              raise SystemExit("forbidden proof declaration in Member.lean")
+          names = re.findall(r"^\s*theorem\s+([A-Za-z0-9_'.]+)", text, re.M)
+          if names != [
+              "transition_keeps_identity",
+              "transition_keeps_member_id",
+              "transition_keeps_credit",
+          ]:
+              raise SystemExit(f"unexpected theorem inventory: {names}")
+          print("source guard PASS")
+          PY
+
+      - name: Compile transition model
+        shell: bash
+        run: |
+          set -euo pipefail
+          lean -DwarningAsError=true Member.lean
+          lean -DwarningAsError=true Union.lean
+          lean -DwarningAsError=true Audit.lean
+
+      - name: Kill identity mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/check_transition_mutation.py
