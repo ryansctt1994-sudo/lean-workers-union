@@ -48,9 +48,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          lean -DwarningAsError=true Member.lean
+          lean -DwarningAsError=true -o Member.olean Member.lean
           lean -DwarningAsError=true Union.lean
-          lean -DwarningAsError=true Audit.lean
+          LEAN_PATH=. lean -DwarningAsError=true Audit.lean
 
       - name: Kill identity mutation
         shell: bash
